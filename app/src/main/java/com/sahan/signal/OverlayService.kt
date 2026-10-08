@@ -23,7 +23,7 @@ class OverlayService : Service() {
     private var proj: MediaProjection? = null
     private var busy = false
     private val G = 0xFF00FF88.toInt()
-    private val R = 0xFFFF4D4D.toInt()
+    private val RED = 0xFFFF4D4D.toInt()
     private val DARK = 0xE6001A0F.toInt()
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -130,7 +130,7 @@ class OverlayService : Service() {
             val s = bm?.let { Analyzer.signal(Analyzer.candles(it), dir) }
             Thread.sleep(1200)  // short animation pause
             if (s == null) { setCard("--", Color.LTGRAY); return }
-            setCard(if (s.up) "UP ▲\n${s.pct}%" else "DOWN ▼\n${s.pct}%", if (s.up) G else R)
+            setCard(if (s.up) "UP ▲\n${s.pct}%" else "DOWN ▼\n${s.pct}%", if (s.up) G else RED)
             ui.postDelayed({ Thread { judge(s, dir) }.start() }, 75000)
         } finally { busy = false }
     }
