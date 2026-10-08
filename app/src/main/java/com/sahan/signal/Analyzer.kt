@@ -4,7 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import java.io.File
 
-class Candle(val up: Boolean, val hi: Int, val lo: Int, val top: Int, val bot: Int)
+class Candle(val x: Int, val up: Boolean, val hi: Int, val lo: Int, val top: Int, val bot: Int) {
+    val close get() = if (up) top else bot  // y of close (smaller y = higher price)
+}
 class Sig(val up: Boolean, val key: String, val pct: Int, val hUp: Boolean)
 
 object Analyzer {
@@ -34,24 +36,40 @@ object Analyzer {
             if (type[i] == 0) { i++; continue }
             var j = i
             while (j + 1 < n && type[j + 1] == type[i]) j++
-            if (j - i + 1 >= 5) { val c = (i + j) / 2; val e = i + 1; out.add(Candle(type[i] == 1, mn[c], mx[c], mn[e], mx[e])) }
+            if (j - i + 1 >= 5) { val c = (i + j) / 2; val e = i + 1; out.add(Candle(c, type[i] == 1, mn[c], mx[c], mn[e], mx[e])) }
             i = j + 1
         }
         return out
     }
 
+    // A real chart has many evenly spaced candles; home screens / other apps are rejected.
+    fun valid(c: List<Candle>): Boolean {
+        if (c.size < 8) return false
+        val gaps = c.zipWithNext { a, b -> b.x - a.x }
+        val med = gaps.sorted()[gaps.size / 2]
+        return med >= 6 && gaps.count { Math.abs(it - med) <= med * 0.4 } >= gaps.size * 0.7
+    }
+
     fun signal(c: List<Candle>, dir: File): Sig? {
-        if (c.size < 5) return null
-        val cur = c.last(); val prev = c.dropLast(1).takeLast(6); val last = prev.last()
+        if (!valid(c)) return null
+        val cur = c.last(); val prev = c.dropLast(1).takeLast(8); val last = prev.last()
         val avg = prev.map { (it.bot - it.top).toDouble() }.average().coerceAtLeast(2.0)
         val body = (cur.bot - cur.top) / avg
         var streak = 0
         for (k in prev.reversed()) { if (k.up == last.up) streak++ else break }
         val sg = { u: Boolean -> if (u) 1.0 else -1.0 }
-        val score = sg(cur.up) * minOf(body, 2.0) + sg(last.up) * minOf(streak, 3) * 0.3 +
-            ((cur.lo - cur.bot) - (cur.top - cur.hi)) / avg * 0.8
+        val win = c.takeLast(12)
+        val hi = win.minOf { it.hi }; val lo = win.maxOf { it.lo }
+        val pos = (cur.close - hi).toDouble() / (lo - hi).coerceAtLeast(1)  // 0 = top of range, 1 = bottom
+        val trend = (prev.first().close - cur.close) / avg / prev.size       // > 0 = rising
+        var score = sg(cur.up) * minOf(body, 2.0)                                    // current momentum
+        score += sg(last.up) * (if (streak >= 4) -0.5 else minOf(streak, 3) * 0.3)  // streak (reverts after 4+)
+        score += ((cur.lo - cur.bot) - (cur.top - cur.hi)) / avg * 0.8               // wick rejection
+        score += trend.coerceIn(-1.0, 1.0) * 0.6                                     // short trend
+        score += if (pos < 0.15) -0.5 else if (pos > 0.85) 0.5 else 0.0             // range extremes revert
         val hUp = score >= 0
-        val key = "${if (cur.up) "U" else "D"}${minOf(streak, 3)}${if (last.up) "u" else "d"}b${if (body < 0.5) 0 else if (body < 1.2) 1 else 2}"
+        val key = "${if (cur.up) "U" else "D"}${minOf(streak, 3)}${if (last.up) "u" else "d"}b${if (body < 0.5) 0 else if (body < 1.2) 1 else 2}" +
+            "t${if (trend > 0.05) "p" else if (trend < -0.05) "n" else "z"}r${if (pos < 0.15) 0 else if (pos > 0.85) 2 else 1}"
         var w = 0; var t = 0
         File(dir, "log.csv").takeIf { it.exists() }?.forEachLine { l ->
             val f = l.split(",")
