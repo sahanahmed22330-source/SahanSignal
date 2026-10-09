@@ -11,7 +11,7 @@ class Sig(val up: Boolean, val key: String, val pct: Int, val hUp: Boolean)
 
 object Analyzer {
     // Chart area as fractions of the screen. Adjust if candles are not detected.
-    const val X0 = 0.0f; const val X1 = 0.85f; const val Y0 = 0.10f; const val Y1 = 0.70f
+    const val X0 = 0.0f; const val X1 = 0.85f; const val Y0 = 0.14f; const val Y1 = 0.70f
 
     private fun cls(p: Int): Int {
         val r = Color.red(p); val g = Color.green(p); val b = Color.blue(p)
@@ -30,16 +30,18 @@ object Analyzer {
             type[i] = t
             if (t != 0) for (y in 0 until hh) if (cls(px[y * n + i]) == t) { if (y < mn[i]) mn[i] = y; mx[i] = y }
         }
-        val out = ArrayList<Candle>()
+        val raw = ArrayList<Pair<Candle, Int>>()
         var i = 0
         while (i < n) {
             if (type[i] == 0) { i++; continue }
             var j = i
             while (j + 1 < n && type[j + 1] == type[i]) j++
-            if (j - i + 1 >= 5) { val c = (i + j) / 2; val e = i + 1; out.add(Candle(c, type[i] == 1, mn[c], mx[c], mn[e], mx[e])) }
+            if (j - i + 1 >= 5) { val c = (i + j) / 2; val e = i + 1; raw.add(Pair(Candle(c, type[i] == 1, mn[c], mx[c], mn[e], mx[e]), j - i + 1)) }
             i = j + 1
         }
-        return out
+        // Real candle bodies share one width; thin runs (the small price-line marker, a half-visible edge candle) are not candles.
+        val med = if (raw.isEmpty()) 0 else raw.map { it.second }.sorted()[raw.size / 2]
+        return raw.filter { it.second >= med * 0.6 }.map { it.first }
     }
 
     // A real chart has many evenly spaced candles; home screens / other apps are rejected.
